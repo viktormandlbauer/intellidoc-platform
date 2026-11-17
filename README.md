@@ -1,8 +1,8 @@
-# Document API
+# IntelliDoc Platform
 
 A distributed, self-hosted document platform with permission-aware semantic search: teams upload PDFs, independent services process and index them, and users find them by asking in natural language, while only ever seeing documents they are allowed to read.
 
-> **Status:** Phase 1 – requirements. No code yet.
+> **Status:** Phase 2 – architecture. Requirements and MVP scope are done; the architecture is proposed in [`docs/architecture.md`](docs/architecture.md) and [`docs/adr/`](docs/adr/README.md) and will be confirmed by a spike. No code yet.
 
 ## Problem
 
@@ -37,5 +37,7 @@ Deliver an MVP of the distributed document platform that demonstrates the comple
 | File | Content |
 |---|---|
 | [`docs/requirements.md`](docs/requirements.md) | User stories, functional and non-functional requirements, priorities, acceptance criteria |
-| [`docs/mvp.md`](docs/mvp.md) | MVP scope, demo scenario, included/excluded functions, dependencies and costs |
+| [`docs/mvp.md`](docs/mvp.md) | MVP scope, demo scenario, included/excluded functions with reasons, dependencies and costs, open questions |
+| [`docs/architecture.md`](docs/architecture.md) | Technical constraints, candidate architectures (C4), comparison and recommendation |
+| [`docs/adr/`](docs/adr/README.md) | Architectural Decision Records (MADR) |
 | [`docs/ai-usage.md`](docs/ai-usage.md) | How AI was used in requirements engineering, prompts, results and critical assessment |

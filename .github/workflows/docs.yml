@@ -1,0 +1,39 @@
+# Checks the documentation: Markdown formatting, links between documents and requirement IDs.
+# Code checks (ruff, mypy, import-linter, tests; see ADR-0002 and ADR-0003) get their own workflow once there is code.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  markdownlint:
+    name: Lint Markdown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Rules, files and exclusions come from .markdownlint-cli2.yaml in the repository root.
+      - uses: DavidAnson/markdownlint-cli2-action@v25
+
+  links:
+    name: Check links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # --offline checks only links to files in the repository, so external sites cannot make the build flaky.
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress './**/*.md'
+          fail: true
+
+  ids:
+    name: Check requirement IDs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Every referenced ID (US, REQ, NFR, AC, ADR, C, A, Q) must be defined; see the script's docstring.
+      - run: python3 scripts/check_ids.py

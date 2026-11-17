@@ -1,0 +1,26 @@
+# Markdown formatting rules for the whole repository.
+# Used by the markdownlint editor extension, by `npx markdownlint-cli2 [--fix]` and by CI (.github/workflows/docs.yml).
+# Rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+config:
+  default: true
+
+  # Line length: we write one sentence per line (ADRs), and tables and links make lines long.
+  MD013: false
+
+  # Duplicate headings: allowed under different parents (e.g. "Consequences" or "Good, because" in several ADR options),
+  # but not twice under the same parent.
+  MD024:
+    siblings_only: true
+
+  # Table column style: we use compact separators (|---|) instead of aligned columns.
+  MD060: false
+
+globs:
+  - "**/*.md"
+
+ignores:
+  - ".obsidian/**"
+  - "node_modules/**"
+  # MADR templates: their blank lines are deliberate placeholders.
+  - "docs/adr/template/**"

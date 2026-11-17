@@ -1,0 +1,26 @@
+# Obsidian vault settings and workspace layout (personal, change constantly)
+.obsidian/
+
+# Local configuration with secrets; .env.example is committed (NFR-6)
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
