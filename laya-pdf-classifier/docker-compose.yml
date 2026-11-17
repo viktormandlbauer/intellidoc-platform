@@ -1,0 +1,22 @@
+services:
+  pdfclf:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro   # your labels
+      - hf-cache:/models                    # Laya weights (~1 GB per checkpoint), downloaded on first request
+      - ./models:/app/models                # trained classifier (`pdfclf train`), re-read when it changes
+      - ./labelled:/data/labelled:ro        # training data: docker compose run --rm pdfclf pdfclf train /data/labelled
+      - ./inbox:/data/inbox                 # for CLI runs: docker compose run --rm pdfclf pdfclf sort /data/inbox /data/sorted
+      - ./sorted:/data/sorted
+    environment:
+      PDFCLF_BACKEND: laya                  # laya | ml | hybrid
+    # Uncomment for an NVIDIA GPU (and build with the cu124 TORCH_INDEX, see Dockerfile):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+volumes:
+  hf-cache:

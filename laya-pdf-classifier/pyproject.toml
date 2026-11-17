@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "laya-pdf-classifier"
+version = "0.1.0"
+description = "Prototype: classify PDFs with the Laya decision model and a trained classifier"
+requires-python = ">=3.10"
+dependencies = [
+  "laya>=0.4.7",
+  "docling>=2.31",
+  "pyyaml>=6.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "python-multipart>=0.0.9",
+  "scikit-learn>=1.4",
+  "psycopg[binary]>=3.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx", "reportlab"]
+
+[project.scripts]
+pdfclf = "pdfclf.cli:main"
+
+[tool.setuptools]
+packages = ["pdfclf"]

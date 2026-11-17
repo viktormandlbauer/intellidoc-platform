@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intellidoc"
+version = "0.3.0"
+description = "Hybrid AI document analysis API: parsing, classification and (soon) structured extraction"
+requires-python = ">=3.10"
+# contracts only; pick the extras for what a process runs
+dependencies = ["pydantic>=2.6"]
+
+[project.optional-dependencies]
+# HTTP layer: the Document API (service) and the engine API
+api = ["fastapi>=0.110", "uvicorn>=0.27", "python-multipart>=0.0.9"]
+# engine + worker: parsing, classification, PostgreSQL storage, CLI
+worker = ["docling>=2.31", "pyyaml>=6.0", "scikit-learn>=1.4", "psycopg[binary]>=3.2"]
+# optional zero-shot classifier (pulls in torch and ~1 GB of weights on first use)
+laya = ["laya>=0.4.7"]
+# everything, for local development
+all = ["intellidoc[api,worker,laya]"]
+dev = ["pytest", "httpx", "reportlab"]
+
+[project.scripts]
+intellidoc = "intellidoc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tools"]

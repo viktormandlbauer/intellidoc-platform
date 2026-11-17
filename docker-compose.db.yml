@@ -1,0 +1,27 @@
+# PostgreSQL (with the pgvector extension available) for local development. Dev credentials: do not expose this.
+#   docker compose -f docker-compose.yml -f docker-compose.db.yml up --build
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: intellidoc
+      POSTGRES_PASSWORD: intellidoc
+      POSTGRES_DB: intellidoc
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intellidoc -d intellidoc"]
+      interval: 5s
+      retries: 30
+
+  intellidoc:
+    environment:
+      DATABASE_URL: postgresql://intellidoc:intellidoc@postgres:5432/intellidoc
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg-data:

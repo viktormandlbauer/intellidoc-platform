@@ -1,0 +1,15 @@
+__pycache__/
+*.egg-info/
+.venv/
+.DS_Store
+.pytest_cache/
+config.yaml
+samples/
+eval-report/
+inbox/
+sorted/
+*.jsonl
+*.csv
+models/
+labelled/
+data/

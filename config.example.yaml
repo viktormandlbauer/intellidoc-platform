@@ -1,0 +1,93 @@
+# intellidoc configuration: one section per pipeline stage.
+# Copy to config.yaml and adapt the labels to your own documents.
+
+parsing:
+  max_pages:            # pages extracted, stored and searchable (empty = all; set a cap for huge PDFs)
+  ocr: true             # OCR scanned PDFs with Docling (Tesseract if installed)
+  ocr_language: deu+eng # Tesseract language codes
+
+classification:
+  # hybrid | ml | laya | keyword   (--backend and INTELLIDOC_BACKEND override this)
+  #   hybrid:  trained classifier for the primary label, Laya for the other questions;
+  #            plain Laya until `intellidoc train` has produced a model
+  #   ml:      trained classifier only, primary question only (no Laya needed)
+  #   laya:    zero-shot only, no training (pip install 'intellidoc[laya]')
+  #   keyword: model-free stand-in for testing, not a real classifier
+  backend: hybrid
+  # The question whose answer is "the" class of the document (used for sorting and evaluation).
+  primary: document_type
+  # Answers below this confidence are marked "review" instead of "auto".
+  # Tune it with `intellidoc evaluate`: Laya's raw confidences are over-confident until calibrated.
+  min_confidence: 0.6
+  max_pages: 3          # the classifier reads only the first N pages ...
+  max_chars: 6000       # ... capped at this many characters
+
+  laya:
+    # english | multilingual | typed-decisions | auto
+    # multilingual: 100+ languages, 1024-token window (recommended for German/mixed documents)
+    # english:      best on English-only text, 512-token window
+    # auto:         Laya's Router picks per document by detected language/script
+    checkpoint: multilingual
+    # cpu | cuda | mps | auto  (auto = let torch decide)
+    device: auto
+    # first: classify the first window of text only (fast)
+    # long:  slide over the whole extracted text and aggregate (slower, uses more of the document)
+    scan: first
+    # Optional token budgets (leave empty for the checkpoint defaults).
+    # head_max_len is shared by the question and ALL option descriptions; raise it if you
+    # have many labels with long descriptions. max_len up to 8192 works on multilingual.
+    max_len:
+    head_max_len:
+
+  ml:
+    # paperless-ngx-style classifier for the primary question: word uni/bigrams -> scikit-learn MLP,
+    # trained on your own documents with `intellidoc train`. Used by the ml and hybrid backends.
+    model_path: models/classifier.pkl
+    # hybrid only: ml      = the trained model decides the primary label, Laya answers the rest
+    #              average = weight * model + (1 - weight) * Laya, per label
+    combine: ml
+    weight: 0.7
+    # ignore words/bigrams found in fewer than this share of training documents (paperless: 0.01)
+    min_df: 0.01
+
+  questions:
+    document_type:
+      type: choice
+      instructions: What kind of document is this?
+      # Keep descriptions short and distinctive: they are what the model compares the text against.
+      # Label keys become folder names when sorting and must match folder names when evaluating.
+      labels:
+        invoice: "invoice / Rechnung: invoice number, amount due, VAT, payment terms"
+        receipt: "receipt / Kassenbon / Quittung: payment already made, paid amount"
+        contract: "contract / Vertrag: parties, terms, signatures, duration, termination"
+        bank_statement: "bank statement / Kontoauszug: account balance, transactions, IBAN"
+        payslip: "payslip / Lohnzettel / Gehaltsabrechnung: gross and net salary, deductions"
+        tax: "tax document / Steuerbescheid / Finanzamt: tax assessment, tax return"
+        insurance: "insurance / Versicherung: policy, premium, coverage, claim"
+        medical: "medical / Arztbrief / Befund: diagnosis, doctor, treatment, health insurance"
+        letter: "general letter or notice / Schreiben: correspondence not covered above"
+        other: "anything else: manuals, flyers, forms, unrelated documents"
+
+    needs_payment:
+      type: noul
+      instructions: Does this document ask the recipient to pay an amount by a date?
+
+    contains_personal_data:
+      type: noul
+      instructions: Does the document contain sensitive personal data such as health, salary or ID numbers?
+
+    urgency:
+      type: score
+      instructions: How urgently does the recipient need to act on this document?
+      levels:
+        - "no action needed, for the records"
+        - "action needed within weeks"
+        - "action needed within days or a deadline is close"
+
+storage:
+  url: postgresql://intellidoc:intellidoc@localhost:5432/intellidoc   # DATABASE_URL overrides this
+  table: documents             # created on first use (or `intellidoc db-setup`)
+  # Text search configurations for `intellidoc search`: the extracted text is indexed once per entry,
+  # so German and English words are both stemmed. List them with `\dF` in psql.
+  text_search: [german, english]
+  store_text: true             # false = keep only metadata + classification (no full-text search)

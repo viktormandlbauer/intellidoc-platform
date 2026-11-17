@@ -1,0 +1,23 @@
+name: Project board repo audit
+
+# Projects v2 cannot restrict which repos may be linked to a board, so this
+# checks after the fact and fails loudly instead.
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit board items
+        env:
+          # Must be a PAT with `project` + `repo` scope: the default
+          # GITHUB_TOKEN cannot read user-owned ProjectV2 data.
+          GH_TOKEN: ${{ secrets.PROJECT_AUDIT_TOKEN }}
+          PROJECT_OWNER: viktormandlbauer
+          PROJECT_NUMBER: '5'
+          EXPECTED_REPO: viktormandlbauer/intellidoc-platform
+        run: ./scripts/audit-project-repos.sh
