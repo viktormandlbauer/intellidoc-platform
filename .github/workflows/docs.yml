@@ -1,5 +1,5 @@
 # Checks the documentation: Markdown formatting, links between documents and requirement IDs.
-# Code checks (ruff, mypy, import-linter, tests; see ADR-0002 and ADR-0003) get their own workflow once there is code.
+# Code checks (ruff, mypy, tests; see ADR-0002) get their own workflow once there is code.
 name: Docs
 
 on:

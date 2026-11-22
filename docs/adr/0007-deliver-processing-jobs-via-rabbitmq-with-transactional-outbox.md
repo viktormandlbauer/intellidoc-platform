@@ -7,7 +7,7 @@ date: 2026-11-17
 
 ## Context and Problem Statement
 
-Every upload must be processed asynchronously by a pool of workers (REQ-ING-1, [ADR-0001](0001-use-api-worker-pool-and-dedicated-search-engine.md)).
+Every upload must be processed asynchronously by a pool of workers (REQ-ING-1, [ADR-0001](0001-use-api-worker-pool-and-postgresql-search.md)).
 A job must not be lost if the API crashes between saving the document and publishing the job, and a document whose worker is stopped mid-processing must be processed again (NFR-7).
 Retries of failed documents (REQ-ING-6) and the status transitions of REQ-ING-2 must work with the chosen mechanism.
 How are processing jobs delivered from the API to the workers?
@@ -18,7 +18,7 @@ How are processing jobs delivered from the API to the workers?
 * Recovery after a worker interruption (NFR-7) and idempotent reprocessing (REQ-ING-4).
 * Workers scale horizontally and independently of the API (README goal).
 * Allowed status transitions only (REQ-ING-2); timeout handling (REQ-ING-3).
-* Few additional containers and little memory on the reference host (NFR-6).
+* Few additional containers and little memory on the reference host (Q-2).
 
 ## Considered Options
 
@@ -50,8 +50,8 @@ Details:
 * Good, because no job is lost if the API or the broker is unavailable at upload time; the relay catches up.
 * Good, because a stopped worker's job is redelivered by the broker without manual action.
 * Good, because the fencing number makes concurrent processing of the same document harmless.
-* Bad, because RabbitMQ is an additional container (≈ 150–250 MB).
-* Bad, because the outbox relay adds up to one polling interval (≈ 1 s) of delay before processing starts.
+* Bad, because RabbitMQ is an additional container with its own memory use.
+* Bad, because the outbox relay adds up to one polling interval of delay before processing starts.
 * Bad, because the team must understand at-least-once delivery; idempotency is mandatory in every step.
 
 ### Confirmation
@@ -95,4 +95,4 @@ Details:
 
 ## More Information
 
-* If the reference host runs short of memory (Q-2), the PostgreSQL job table is the fallback; the `JobPublisher` port ([ADR-0003](0003-structure-code-as-ports-and-adapters.md)) and the job consumer adapter are the only code to change.
+* If the reference host runs short of memory (Q-2), the PostgreSQL job table is the fallback; the `JobPublisher` interface and the job consumer are the only code to change.

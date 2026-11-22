@@ -15,6 +15,7 @@ This document records where AI was used in phase 1 (requirements) and phase 2 (a
 | 3 | Generating the reduced specification (stories, acceptance criteria, NFRs, MVP) | Drafts + decision "use Docling" | `requirements.md`, `mvp.md`, this file (draft) | Reviewed and edited; see 3.4 |
 | 4 | Candidate architectures and ADRs (phase 2) | `requirements.md`, `mvp.md` | `architecture.md`, ADR-0001…0008 | *To be completed*; see 4.4 |
 | 5 | Consistency review of requirements, MVP, architecture and ADRs | All documents in `docs/` | List of contradictions and gaps; fixes to test data, 403/404 criteria, demo steps and cross-references | *To be completed*; see 5.3 |
+| 6 | Coherence review after the switch to PostgreSQL search, and resulting changes | All documents in `docs/`, README | List of contradictions and stale rationale; external answer provider enabled by a Global Admin; ADR-0003 and ADR-0006 merged | *To be completed*; see 6.3 |
 
 ## 1. Review of the first draft
 
@@ -126,7 +127,7 @@ These are plausible but **not verified** and must be confirmed or changed by the
 | REQ-AUT-1 | Token lifetime 60 min | Assumption |
 | REQ-DOC-1 | Max. 50 MB | Assumption |
 | REQ-SRCH-5 | DE+EN as Should | Depends on the target documents (Q-1) |
-| Stories US-1…US-15 | Generated from the requirements | Check that they reflect real needs of our target group, not just the existing requirements reworded |
+| Stories US-1…US-13 | Generated from the requirements | Check that they reflect real needs of our target group, not just the existing requirements reworded. Two further Could stories (replace content, DOCX upload) were generated and later dropped |
 
 ### 3.4 [Team assessment]
 
@@ -154,7 +155,7 @@ These are plausible but **not verified** and must be confirmed or changed by the
 | Memory estimates | A ≈ 7–9 GB, B ≈ 11–13 GB, C ≈ 13–15 GB | Estimates; measured in the spike (Q-2) |
 | ADR-0001 | Design B | Depends on the spike and on the team's experience with OpenSearch and RabbitMQ |
 | ADR-0007 | RabbitMQ with outbox instead of a PostgreSQL job table | Adds a container and the outbox relay; the simpler job table is the fallback |
-| ADR-0003 | Ports and adapters | More boilerplate; check that the team will keep the dependency rule |
+| ADR-0003 (later merged into ADR-0002) | Ports and adapters | More boilerplate; check that the team will keep the dependency rule |
 
 ### 4.4 [Team assessment]
 
@@ -177,13 +178,36 @@ Follow-ups: `Fix section 1 and 3` (the contradictions and the outdated cross-ref
 - Fixed contradictions: AC-3.3 and demo step 3 expected 403 where REQ-ACL-3 requires 404; in demo step 4, alice granted a role in R2 without having rights there.
 - Shortened the entries in `architecture.md` §1 that duplicated ADRs and had started to drift from them; updated status lines, the dependency table and outdated references.
 - Made the name consistent: the system was called "Document API" in the documents and `intellidoc` in ADR-0003; it is now "IntelliDoc Platform", with the distribution named `intellidoc-platform` and the Python package `intellidoc_platform`.
-- Identified ADR gaps (reconciliation race in ADR-0006, deactivation during processing, dead-letter handling), which are left for a team decision.
+- Identified ADR gaps (reconciliation race in ADR-0006, since merged into ADR-0009; deactivation during processing; dead-letter handling), which are left for a team decision.
 
 ### 5.3 [Team assessment]
 
 - Do we agree with the ADR gaps, and how do we resolve them?
 
-## 6. Lessons learned [Team]
+## 6. Coherence review and revision (phase 2)
+
+### 6.1 Prompt
+
+```text
+Review the docs of the project for coherence
+```
+
+Follow-up: `Update the architecture since opt-in external LLM provider is now a feature which should be enabled globally by an admin. The mentioned design comparison should only be mentioned shortly in ADR-0001. Remove or merge "rejected" ADRs for now; ADR-0003 was about the code architecture which would be ports and adapters (hexagonal).`
+
+### 6.2 Result (summary)
+
+- Review: contradictions (runtime outbound traffic vs. the external provider, who enables it, outdated pointers), rationale that went stale after the move to PostgreSQL search (ADR-0002, ADR-0007), and gaps in test data, NFR-3 and traceability.
+- New Should story US-16 and REQ-ANS-5: a Global Admin enables or disables the external answer provider for the whole system; the operator only configures the connection. ADR-0010 and `architecture.md` were updated accordingly.
+- ADR-0001 compares the system structures only briefly; the former option B′ (OpenSearch) is covered by ADR-0009.
+- ADR-0003 (ports and adapters) was merged into ADR-0002, the rejected ADR-0006 into ADR-0009; both numbers stay unused.
+
+### 6.3 [Team assessment]
+
+- Is the split between operator (connection) and Global Admin (setting) what we want, or should a Global Admin also configure the provider?
+- Is US-16 correctly a Should?
+- Which of the remaining review findings do we fix, and how?
+
+## 7. Lessons learned [Team]
 
 - Where did AI help most (e.g. finding inconsistencies quickly, structuring)?
 - Where was it weak (e.g. no domain knowledge, invented numbers, judging the scope without knowing the team)?

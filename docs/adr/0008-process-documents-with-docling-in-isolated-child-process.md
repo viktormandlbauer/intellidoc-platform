@@ -7,7 +7,7 @@ date: 2026-11-17
 
 ## Context and Problem Statement
 
-Workers must extract text from PDFs, including OCR for pages without a text layer, and split it into chunks with page references (REQ-ING-1, REQ-SRCH-3), entirely locally (NFR-5).
+Workers must extract text from PDFs, including OCR for pages without a text layer, and split it into chunks with page references (REQ-ING-1, REQ-SRCH-3), entirely locally.
 Constraint C-1 already chose Docling, and its known risk is that individual malformed PDFs can make the parser hang.
 Processing must fail with status `failed`, the error message and the failed step when it exceeds a timeout, default 10 minutes (REQ-ING-3), and the worker must continue with the next document.
 Which tool is used for extraction and chunking, and how is it run so that a hanging or crashing parse cannot block a worker?
@@ -16,10 +16,10 @@ Which tool is used for extraction and chunking, and how is it run so that a hang
 
 * OCR for scanned PDFs out of the box (REQ-ING-1, AC-5.5).
 * Page number per chunk (REQ-SRCH-3).
-* Local processing without external services (NFR-5).
+* Local processing without external services.
 * Enforceable timeout and memory limit per document; failed step recorded (REQ-ING-3).
 * Processing time: 20 pages in 2 minutes (born-digital) and 5 minutes (scanned) on CPU (NFR-2).
-* Further formats such as DOCX later (US-15).
+* Further formats such as DOCX later.
 
 ## Considered Options
 
@@ -54,7 +54,7 @@ Details:
 * Good, because one library covers extraction, OCR, layout and chunking, and later DOCX.
 * Good, because a hanging or crashing parse costs at most the timeout and never blocks the worker.
 * Good, because models are loaded once per child, not once per document.
-* Bad, because Docling with OCR models needs about 2–3 GB RAM per worker, which limits the number of workers on the reference host.
+* Bad, because Docling with OCR models has a high memory use per worker, which limits the number of workers on the reference host; it is measured in the spike.
 * Bad, because OCR on CPU is slow; NFR-2's 5-minute limit for scanned documents must be verified.
 * Bad, because Docling evolves quickly; the version must be pinned and upgrades tested against the evaluation set.
 
@@ -63,7 +63,7 @@ Details:
 * Test with a PDF that makes the parser hang (or a stub child that sleeps): the document becomes `failed` with step `extract` within timeout plus a small margin, and the worker processes the next document.
 * AC-5.5 (word on the first page of a scanned PDF is found) runs in CI with a small scanned sample.
 * NFR-2 timed run on the reference environment, results documented.
-* The deployment runs with outbound internet blocked (NFR-5).
+* The deployment runs with outbound internet blocked.
 
 ## Pros and Cons of the Options
 
@@ -103,4 +103,4 @@ Details:
 ## More Information
 
 * Replaces constraint C-1 and assumption A-5 in [`architecture.md`](../architecture.md).
-* The `DocumentParser` port ([ADR-0003](0003-structure-code-as-ports-and-adapters.md)) hides Docling, so the self-assembled pipeline stays a fallback.
+* A `DocumentParser` interface hides Docling, so the self-assembled pipeline stays a fallback.

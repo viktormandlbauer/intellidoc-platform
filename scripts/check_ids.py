@@ -35,6 +35,10 @@ EXCLUDED_PATHS = {ADR_DIR / "template"}
 ALLOWED_UNDEFINED = {
     # ai-usage.md documents the history of the requirements and cites IDs of draft v0.
     ("docs/ai-usage.md", "REQ-VIEW-6"),
+    # ai-usage.md also records the AI's output for ADR-0003 and ADR-0006,
+    # which were later merged into ADR-0002 and ADR-0009 (numbers not reused).
+    ("docs/ai-usage.md", "ADR-0003"),
+    ("docs/ai-usage.md", "ADR-0006"),
 }
 
 ID_PATTERN = re.compile(

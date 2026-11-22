@@ -15,13 +15,13 @@ Scope of this document: user stories, functional and non-functional requirements
 
 **Wording:** "The API" = the HTTP interface. "The system" = API plus processing worker and search index. Requirement IDs are stable (removed IDs are not reused); each requirement references the user story it serves.
 
-**Core use case (demo scenario):** A Global Admin sets up a repository and members → a Contributor uploads PDFs (incl. a scanned one) → the documents are processed and become searchable → a Reader finds a document by a natural-language query and by an exact term, and downloads it → a Reader without access to that repository does not see it → after revoking access, the document disappears from that user's results with the next request.
+**Core use case (demo scenario):** A Global Admin sets up a repository and members → a Contributor uploads PDFs (incl. a scanned one) → the documents are processed and become searchable → a Reader finds a document by a natural-language query and by an exact term, and downloads it → the Reader asks a question and gets a generated answer with page-level sources → a Reader without access to that repository does not see it → after revoking access, the document disappears from that user's results with the next request.
 
 ## 2. Roles
 
 | Role | Scope | Permissions |
 |---|---|---|
-| Global Admin | System | Manages users and repositories; has all Repo Admin permissions in every active repository without holding a repository role. |
+| Global Admin | System | Manages users, repositories and system-wide settings (external answer provider); has all Repo Admin permissions in every active repository without holding a repository role. |
 | Repo Admin | One repository | Manages members of the repository; all Contributor permissions; deactivates any document; sees and retries failed processing. |
 | Contributor | One repository | All Reader permissions; uploads documents; deactivates own documents. |
 | Reader | One repository | Lists, searches and downloads documents of the repository. |
@@ -46,9 +46,8 @@ Repository roles are hierarchical (Reader ⊂ Contributor ⊂ Repo Admin). A use
 | US-10 | S | See and retry failed processing |
 | US-11 | S | Deactivate repositories |
 | US-12 | S | API keys for integrations |
-| US-13 | C | Generated answers with sources |
-| US-14 | C | Replace document content |
-| US-15 | C | Upload DOCX files |
+| US-13 | M | Generated answers with sources |
+| US-16 | S | Enable an external answer provider |
 
 ### 3.2 Test data
 
@@ -186,16 +185,29 @@ All acceptance criteria start from the following base state, unless their **Give
 | AC-9.3 | **When** alice deactivates D1, **then** the request succeeds. |
 | AC-9.4 | **Given** D1 was deactivated, **then** its original and metadata still exist in storage (verified by database/storage inspection, not via the API). |
 
-### 3.4 Should and Could stories
+#### US-13 – Generated answers `M`
+
+> As a **Reader**, I want a generated answer to my question with page-level source references, so that I get the information without reading every hit.
+
+**Requirements:** REQ-ANS-1, REQ-ANS-2, REQ-ANS-3, REQ-ANS-4
+
+| ID | Acceptance criterion |
+|---|---|
+| AC-13.1 | **When** carol asks a question from the evaluation set whose answer is contained in D1 (NFR-3), **then** the response contains a generated answer and a source reference to D1 with the page number of the passage. |
+| AC-13.2 | **When** carol asks a question, **then** every source reference contains document ID and name, repository ID and name and page number, and refers to a passage carol can find by search. |
+| AC-13.3 | **When** dave asks the same question as in AC-13.1, **then** no source reference points to D1 and no passage of D1 was used to generate the answer. |
+| AC-13.4 | **Given** carol's role in R1 was revoked, **when** carol repeats the question immediately, **then** no source reference points to D1. |
+| AC-13.5 | **When** erin asks any question, **then** the API states that no answer is available and does not return a generated answer. |
+| AC-13.6 | AC-13.3 and AC-13.4 run as automated tests and are part of CI. |
+
+### 3.4 Should stories
 
 | ID | Priority | Story | Requirements |
 |---|---|---|---|
 | US-10 | S | As a **Repo Admin**, I want to see documents whose processing failed and restart processing, so that no document silently stays unsearchable. | REQ-ING-5, REQ-ING-6 |
 | US-11 | S | As a **Global Admin**, I want to deactivate a whole repository, so that obsolete collections disappear without data loss. | REQ-REP-4 |
 | US-12 | S | As a **developer of another system**, I want to access the API with an API key bound to a user, so that scripts can upload and search without interactive login. | REQ-AUT-3 |
-| US-13 | C | As a **Reader**, I want a generated answer to my question with page-level source references, so that I get the information without reading every hit. | – |
-| US-14 | C | As a **Contributor**, I want to replace a document's content while keeping its ID, so that links to it stay valid. | – |
-| US-15 | C | As a **Contributor**, I want to upload DOCX files as well as PDFs, so that I need not convert them first. | – |
+| US-16 | S | As a **Global Admin**, I want to enable or disable an external language model provider for answers for the whole system, so that we get faster or better answers when local hardware is too slow, and can stop sending passages out at any time. | REQ-ANS-5 |
 
 ## 4. Functional requirements
 
@@ -251,18 +263,25 @@ All acceptance criteria start from the following base state, unless their **Give
 - **REQ-SRCH-4** [M] (US-7) For queries consisting of an identifier-like term (e.g. a contract number or name), the document containing that term shall rank within the first 10 hits in at least 95 % of the exact-term queries of the evaluation set (NFR-3).
 - **REQ-SRCH-5** [S] (US-7) The system shall support documents and queries in German and English, including queries in one language matching documents in the other (semantic part).
 
+### 4.6 Answers
+
+- **REQ-ANS-1** [M] (US-13) The API shall accept a question (1–500 characters), optionally restricted to a list of repository IDs, and return an answer in natural language generated only from passages found by search (REQ-SRCH-1) for the same Principal.
+- **REQ-ANS-2** [M] (US-13) Each answer shall contain a source reference for every passage it is based on: document ID and name, repository ID and name and page number.
+- **REQ-ANS-3** [M] (US-13) Answers are subject to the same access restriction as search (REQ-ACL-5, REQ-ACL-6): only passages the Principal may currently find shall be used to generate the answer or appear as sources.
+- **REQ-ANS-4** [M] (US-13) If search returns no relevant passage for a question, the API shall state that no answer is available instead of generating one.
+- **REQ-ANS-5** [S] (US-16) The API shall allow a Global Admin to enable and disable answer generation by an external language model provider for the whole system, and to read the current setting. It shall be disabled by default. While it is disabled, no question or passage shall be sent outside the deployment; a change shall take effect with the next answer request.
+
 ## 5. Non-functional requirements
 
-All measurements on the **reference environment**: one host, 8 CPU cores, 16 GB RAM, no GPU, test corpus of 1,000 PDFs (≈ 20,000 pages, of which ≥ 10 % scanned).
+All measurements on the **reference environment**: one host, 8 CPU cores, 16 GB RAM, no GPU, test corpus of 1,000 PDFs (≈ 20,000 pages, of which ≥ 10 % scanned). Measured results are documented per release.
 
-- **NFR-1 Search performance** [M] – Search response time P95 ≤ 2 s with 5 concurrent users on the reference corpus. *Test:* load test script (e.g. k6/Locust) in the repository.
-- **NFR-2 Processing time** [M] – A 20-page born-digital PDF reaches `indexed` within 2 minutes; a 20-page scanned PDF within 5 minutes, measured from upload. *Test:* timed run of the reference set.
-- **NFR-3 Search quality** [M] – An evaluation set of ≥ 30 queries (German and English; at least 10 exact-term and 10 paraphrase queries) with expected documents is part of the repository. Targets: exact-term queries ≥ 95 % with the expected document in the top 10; all queries Recall@10 ≥ 0.8. *Test:* evaluation script, results documented per release.
-- **NFR-4 Security** [M] – Passwords stored with Argon2id or bcrypt; API keys stored only as hashes; tokens signed and expiring; no passwords, tokens or document contents in logs; TLS for all external traffic (via reverse proxy). *Test:* code review checklist + automated test that a revoked/deactivated principal receives 401/404.
-- **NFR-5 Data protection and cost** [M] – All Must features run without external paid services: text extraction, OCR and embeddings run locally inside the deployment, so no document content leaves the system. *Test:* deployment runs with outbound internet blocked (after model download).
-- **NFR-6 Deployability** [M] – The whole system starts with a single `docker compose up` on the reference environment, with documented configuration (`.env.example`). Data (database, originals, index) survives a restart. *Test:* fresh checkout → demo scenario passes.
-- **NFR-7 Robustness** [S] – If the worker is stopped during processing, the affected documents are processed again after restart and reach `indexed` or `failed`; none stays in `processing` permanently.
-- **NFR-8 API documentation** [M] – The API is described by an OpenAPI 3 specification generated from the code and published by the running service; all errors use one JSON error format with code and message.
+- **NFR-1 Search performance** [M] – P95 ≤ 2 s with 5 concurrent users sending evaluation-set queries (NFR-3) for 5 minutes, while one worker processes documents. *Test:* load test script.
+- **NFR-2 Processing time** [M] – Each PDF of a reference set (5 born-digital and 5 scanned, 20 pages each) reaches `indexed` within 2 minutes (born-digital) or 5 minutes (scanned) after upload, on one idle worker. *Test:* timed script.
+- **NFR-3 Search quality** [M] – The repository contains an evaluation set of ≥ 30 queries (German and English; ≥ 10 exact-term, ≥ 10 paraphrase) with expected documents, and ≥ 10 questions with expected source documents (US-13). Targets: expected document in the top 10 for ≥ 95 % of exact-term queries; Recall@10 ≥ 0.8 over all queries. *Test:* evaluation script.
+- **NFR-4 Security** [M] – Passwords stored as salted hashes with a deliberately slow algorithm, API keys only as hashes; tokens signed and expiring; no passwords, tokens, API keys or document text in logs; external traffic only over TLS. *Test:* automated tests for stored hashes, rejected expired or tampered tokens (401), log contents and refused plain HTTP; the hashing algorithm is checked in code review.
+- **NFR-7 Robustness** [S] – A document whose worker is stopped during processing reaches `indexed` or `failed` within twice the processing timeout (REQ-ING-3) after the worker restarts. *Test:* automated kill-and-restart test.
+- **NFR-8 API documentation** [M] – The running service publishes an OpenAPI 3 specification of all endpoints, generated from the code; every error response uses one JSON format with code and message. *Test:* CI validates the published specification and the body of every documented error status.
+- **NFR-9 Answer time** [M] – P95 ≤ 30 s with the local answer model for one user asking each evaluation-set question (NFR-3) three times, while one worker processes documents. *Test:* timed script.
 
 ## 6. Glossary
 
@@ -276,4 +295,6 @@ All measurements on the **reference environment**: one host, 8 CPU cores, 16 GB 
 | Chunk | A text passage of a document with page reference; the unit of search. |
 | Hit | A search result: a chunk with document, repository, page and excerpt. |
 | Processing status | `pending`, `processing`, `indexed` or `failed`. |
+| Answer provider | The language model that generates answers: the local answer model (default) or an external provider, if a Global Admin has enabled it (REQ-ANS-5). |
+| Recall@10 | Share of a query's expected documents that appear in its top 10 hits, averaged over all queries. |
 | Inactive | Soft-deleted: data is retained. Inactive documents and repositories are excluded from listing, download and search; inactive users cannot authenticate. |

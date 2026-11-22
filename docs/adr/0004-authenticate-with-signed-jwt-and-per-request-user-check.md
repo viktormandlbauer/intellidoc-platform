@@ -9,14 +9,14 @@ date: 2026-11-17
 
 Users log in with username and password and receive a token with a configurable lifetime, default 60 minutes (REQ-AUT-1).
 A deactivated user's tokens and API keys must be rejected from the next request on (REQ-USR-4, AC-2.3), and integrations use API keys bound to a user (REQ-AUT-3, Should).
-API instances must stay stateless so they can be scaled (see [ADR-0001](0001-use-api-worker-pool-and-dedicated-search-engine.md)), and OIDC should be addable later (`mvp.md` §5).
+API instances must stay stateless so they can be scaled (see [ADR-0001](0001-use-api-worker-pool-and-postgresql-search.md)), and OIDC should be addable later (`mvp.md` §5).
 How are tokens and API keys issued and validated?
 
 ## Decision Drivers
 
 * Immediate rejection of deactivated users (REQ-USR-4, AC-2.3) and of their API keys.
 * Configurable token lifetime (REQ-AUT-1); 401 for every request without valid authentication except login and health check (REQ-AUT-2).
-* Passwords hashed with Argon2id or bcrypt; API keys stored only as hashes; signed, expiring tokens; no secrets in logs (NFR-4).
+* Passwords stored only as salted hashes with a deliberately slow algorithm; API keys stored only as hashes; signed, expiring tokens; no secrets in logs (NFR-4).
 * Stateless API instances without shared session storage.
 * Authentication behind one interface so OIDC can be added later.
 
@@ -43,7 +43,7 @@ Details:
   Shown in clear text only once at creation.
   A fast hash is sufficient because the secret has high entropy; comparison is constant-time.
   An API key request runs the same user check as a token request.
-* **Interface:** an `Authenticator` port turns a request credential (bearer token or API key) into a `Principal`; OIDC becomes another adapter.
+* **Interface:** an `Authenticator` interface turns a request credential (bearer token or API key) into a `Principal`; OIDC becomes another implementation.
 
 ### Consequences
 

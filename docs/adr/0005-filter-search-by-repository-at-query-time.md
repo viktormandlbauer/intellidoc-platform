@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-17
+date: 2026-11-21
 ---
 
 # Filter search by the Principal's repositories at query time
@@ -37,24 +37,24 @@ Rules:
 1. On every search the API reads the IDs of all active repositories in which the Principal holds a role (Global Admin: all active repositories) from PostgreSQL, in the same request, without a cache.
 2. If the request restricts the search to repository IDs, the scope is the intersection; if a requested repository is not accessible, the API responds 404 (REQ-ACL-3, no disclosure of existence).
 3. If the scope is empty, the API returns an empty result without querying the index.
-4. The scope is applied as a filter inside **both** the lexical and the vector sub-query, together with `searchable = true` (see [ADR-0006](0006-keep-postgresql-authoritative-and-update-index-visibility-synchronously.md)), so filtering happens before ranking and counting.
+4. The scope is applied as a filter inside **every** lexical, exact-term and vector sub-query, together with `document.active AND document.status = 'indexed' AND repository.active` (see [ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md)), so filtering happens before ranking and counting.
 5. Fail closed: if the scope cannot be determined, the API responds 503 and never queries the index without a filter.
-6. The `SearchIndex` port ([ADR-0003](0003-structure-code-as-ports-and-adapters.md)) accepts only a `RepositoryScope` value, which can only be created by the access policy and cannot be empty; there is no search method without a scope.
+6. The `SearchIndex` interface ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md)) accepts only a `RepositoryScope` value, which can only be created by the access policy and cannot be empty; there is no search method without a scope.
 
 ### Consequences
 
 * Good, because revoking a role, deactivating a user or deactivating a repository needs no index update at all.
 * Good, because hit counts are computed by the index over permitted documents only.
-* Good, because the rule lives in one place and is enforced by the type of the port.
+* Good, because the rule lives in one place and is enforced by the type of the interface.
 * Bad, because every search costs one additional indexed query on PostgreSQL.
-* Bad, because filtered vector search can lose recall if the engine filters after the approximate nearest-neighbour step; the chosen engine must support efficient filtered k-NN, which the spike checks.
+* Bad, because filtered vector search can lose recall if the index filters after the approximate nearest-neighbour step; pgvector's HNSW iterative index scans address this, and the spike checks recall with restrictive scopes.
 * Neutral, because the number of repositories per user is expected to be small, so the filter list stays short.
 
 ### Confirmation
 
 * AC-7.4 and AC-8.1 to AC-8.3 run as automated tests for every role in CI (AC-8.4), including a check of the total hit count.
 * A test asserts that the search use case returns 503 and sends no index query when the scope lookup fails.
-* The `SearchIndex` contract test asserts that results never contain documents outside the scope, for both lexical and vector matches.
+* The `SearchIndex` contract test asserts that results never contain documents outside the scope, for lexical, exact-term and vector matches.
 * Search latency including the scope lookup is part of the NFR-1 load test.
 
 ## Pros and Cons of the Options
@@ -86,4 +86,5 @@ Rules:
 ## More Information
 
 * Replaces constraint C-4 in [`architecture.md`](../architecture.md).
-* Document deactivation is handled in [ADR-0006](0006-keep-postgresql-authoritative-and-update-index-visibility-synchronously.md); user deactivation in [ADR-0004](0004-authenticate-with-signed-jwt-and-per-request-user-check.md).
+* Generated answers use the same scope: the answer use case retrieves passages only through search ([ADR-0010](0010-generate-answers-locally-with-opt-in-external-provider.md)).
+* Document deactivation is handled in [ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md) (same transaction as metadata); user deactivation in [ADR-0004](0004-authenticate-with-signed-jwt-and-per-request-user-check.md).
