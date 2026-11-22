@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-17
+date: 2026-11-22
 ---
 
 # Deliver processing jobs via RabbitMQ with a transactional outbox
@@ -18,7 +18,7 @@ How are processing jobs delivered from the API to the workers?
 * Recovery after a worker interruption (NFR-7) and idempotent reprocessing (REQ-ING-4).
 * Workers scale horizontally and independently of the API (README goal).
 * Allowed status transitions only (REQ-ING-2); timeout handling (REQ-ING-3).
-* Few additional containers and little memory on the reference host (Q-2).
+* Operational effort from additional services.
 
 ## Considered Options
 
@@ -34,16 +34,29 @@ Chosen option: "RabbitMQ with a transactional outbox in PostgreSQL", because it 
 
 Details:
 
-* **Outbox:** the upload use case inserts the document (`pending`) and an outbox row in one transaction.
-  A relay in the API process publishes outbox rows to RabbitMQ with publisher confirms and marks them published.
+* **Outbox:** the upload use case inserts the document (`pending`) and an outbox row in one transaction, after the original is stored ([ADR-0012](0012-validate-uploads-before-storing-original-and-metadata.md)).
+  A relay publishes outbox rows to RabbitMQ with publisher confirms and marks them published.
+  The relay runs in every API instance and claims rows with `SELECT … FOR UPDATE SKIP LOCKED`, so instances do not publish the same row concurrently; a crash between publishing and marking produces a duplicate message, which the claim below absorbs.
   Retry (`failed → pending`, REQ-ING-6) and recovery (`processing → pending`) also write an outbox row in the same transaction as the status change.
-* **Queue:** one durable queue `document.process`, persistent messages with `{document_id, job_id}`; a dead-letter queue receives messages after a configurable number of redeliveries, and the document is set to `failed`.
-* **Consumer:** prefetch 1; the message is acknowledged only after the final status (`indexed` or `failed`) is committed.
-  The broker's consumer timeout is set above the processing timeout of REQ-ING-3.
-* **Delivery guarantee:** at least once.
-  The worker claims a document with a conditional update that increments `processing_attempt` and sets status `processing`; it writes chunks and the final status only if its attempt number is still current (fencing).
-  Duplicates without the redelivered flag for a document already in `processing` are acknowledged and dropped.
-* **Recovery sweep:** at worker startup and periodically, documents in `processing` whose lease (`processing_started_at` + timeout) has expired are set back to `pending` with a new outbox row (NFR-7).
+* **Queue:** one durable quorum queue `document.process` with persistent messages `{document_id}`.
+  Its delivery limit (configurable) dead-letters a message that is redelivered too often without acknowledgement, e.g. because the worker crashes before it claims the document.
+  A dead-letter consumer in the worker sets such a document to `failed` with step `deliver`, if it is still `pending` (REQ-ING-2).
+* **Delivery guarantee:** at least once; every step below is safe to repeat.
+* **Claim:** the worker claims a document with one conditional update that sets status `processing`, increments `processing_attempt`, sets `processing_started_at` and the current step `extract`, and succeeds only if the document and its repository are active and the status is `pending`.
+  If no row is updated – another worker holds the document, it is already finished, or it is inactive – the message is acknowledged and dropped.
+  A message redelivered after a worker crash therefore finds `processing` and is dropped; the document is recovered by the sweep, so the claim needs no transition other than `pending → processing`.
+* **Deadline:** the processing timeout of REQ-ING-3 is one deadline per document, counted from `processing_started_at` and covering all steps ([ADR-0008](0008-process-documents-with-docling-in-isolated-child-process.md)).
+  The pipeline runner records the current step (`extract`, `chunk`, `embed`, `index`) in the document row when the step starts, so a failure or interruption always has a step.
+* **Fencing:** every later write of the worker (current step, chunks, status `indexed` or `failed`) is conditional on status `processing` and on `processing_attempt` still being the claimed number; writes of a stale worker change nothing.
+* **Acknowledgement:** prefetch 1; the message is acknowledged after the final status is committed, or when it is dropped.
+  The broker's consumer timeout is set above the processing timeout.
+* **Recovery sweep:** at worker startup and periodically (interval configurable, well below the processing timeout), documents in `processing` whose lease (`processing_started_at` + timeout + a small margin) has expired are set back to `pending` with a new outbox row, and their `recovery_count` is incremented, in one transaction (NFR-7).
+  When `recovery_count` reaches a configurable maximum (default 3), the document is set to `failed` instead, with the recorded step and the message "processing interrupted repeatedly", so a document that crashes the worker every time cannot loop forever.
+  Upload and retry start with `recovery_count` 0; `processing_attempt` is never reset, because it is the fencing number.
+  Sweeps in several workers may overlap; each reset is a conditional update and happens once.
+* **Inactive documents:** claim, sweep and indexing ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md)) act only on active documents in active repositories (REQ-DOC-7).
+  A document deactivated during processing is never set to `indexed`: the worker checks at each step boundary and at the latest in the indexing transaction, writes nothing, acknowledges the message and leaves the status unchanged.
+  Reactivation is out of scope (`mvp.md` §5), so the status of an inactive document is frozen and is not shown by any endpoint.
 
 ### Consequences
 
@@ -53,6 +66,7 @@ Details:
 * Bad, because RabbitMQ is an additional container with its own memory use.
 * Bad, because the outbox relay adds up to one polling interval of delay before processing starts.
 * Bad, because the team must understand at-least-once delivery; idempotency is mandatory in every step.
+* Bad, because a document whose worker crashed waits until its lease has expired before it is processed again, i.e. up to the processing timeout; NFR-7 allows for this.
 
 ### Confirmation
 
@@ -60,6 +74,9 @@ Details:
 * Test: a worker is killed during processing; the document reaches `indexed` or `failed` after restart (NFR-7).
 * Test: the same job is delivered twice; the document has exactly one set of chunks (REQ-ING-4).
 * Status transitions outside REQ-ING-2 are rejected by the domain model (unit test).
+* Test: a stub parser that crashes the worker on every attempt leaves the document `failed` after the maximum number of recoveries, with the recorded step.
+* Test: a document deactivated while it is processed never becomes searchable, and its message is acknowledged.
+* Test: a message that reaches the delivery limit before any claim sets its `pending` document to `failed` with step `deliver`.
 
 ## Pros and Cons of the Options
 
@@ -95,4 +112,4 @@ Details:
 
 ## More Information
 
-* If the reference host runs short of memory (Q-2), the PostgreSQL job table is the fallback; the `JobPublisher` interface and the job consumer are the only code to change.
+* A PostgreSQL job table remains an alternative if operating a separate broker is impractical.

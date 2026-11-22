@@ -10,7 +10,7 @@ date: 2026-11-21
 The system consists of an HTTP API and processing workers (see [ADR-0001](0001-use-api-worker-pool-and-postgresql-search.md)).
 The workers must use Docling (constraint C-1) and a local embedding model, both of which are Python libraries.
 The API must publish an OpenAPI 3 specification generated from the code (NFR-8).
-Several infrastructure parts are likely to change after the spike or later: the search index ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md) keeps OpenSearch as a fallback), the embedding model (C-2), the answer model ([ADR-0010](0010-generate-answers-locally-with-opt-in-external-provider.md)), the object store ([ADR-0011](0011-store-originals-in-rustfs.md)) and authentication (OIDC later, `mvp.md` §5).
+Several infrastructure parts may change during MVP implementation or later: the search index ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md) keeps OpenSearch as a fallback), the embedding model (C-2), the answer model ([ADR-0010](0010-generate-answers-locally-with-opt-in-external-provider.md)), the object store ([ADR-0011](0011-store-originals-in-rustfs.md)) and authentication (OIDC later, `mvp.md` §5).
 Which language and web framework should the API and the workers use, and how should the code be structured internally?
 
 ## Decision Drivers

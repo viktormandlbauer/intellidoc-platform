@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-21
+date: 2026-11-22
 ---
 
 # Generate answers with a local language model and an opt-in external provider
@@ -9,7 +9,7 @@ date: 2026-11-21
 
 Readers ask questions and get a generated answer with page-level sources, based only on passages they may currently find (US-13, REQ-ANS-1 to REQ-ANS-4).
 Answer generation needs a language model.
-A local model on the CPU-only reference host is free and keeps all data on the server, but it is slow on CPU and needs memory that OCR, embedding and search also need (NFR-9, Q-2).
+A local model keeps data on the server and shares deployment resources with OCR, embedding and search when colocated (NFR-9).
 Hosted providers such as Scaleway Generative APIs or Mistral AI are fast and need no local memory, but the passages used for an answer would leave the company server.
 Whether that is acceptable is a decision of the organisation, so a Global Admin enables or disables an external provider for the whole system (US-16, REQ-ANS-5).
 Which language model generates answers, how is it integrated, and how is the external provider switched on and off?
@@ -18,12 +18,12 @@ Which language model generates answers, how is it integrated, and how is the ext
 
 * Answers use only passages the Principal may currently find, and cite them (REQ-ANS-2, REQ-ANS-3, AC-13.3).
 * No answer is generated without evidence (REQ-ANS-4).
-* Answer time P95 ≤ 30 s for a single user (NFR-9).
+* Answer time for a single user (NFR-9).
 * Documents and derived data stay on the company server; Must features work without external paid services and without outbound traffic in the default configuration.
 * Sending passages to an external provider is a conscious, system-wide decision of a Global Admin; it is off by default and can be revoked with immediate effect (REQ-ANS-5).
 * The provider's API key never appears in the database, in API responses or in logs (NFR-4).
-* Memory and CPU on the reference host, shared with OCR, embedding and search (Q-2, NFR-2).
-* The model can be exchanged after the spike without code changes in the use case.
+* Resource contention when OCR, embedding and answer generation run alongside one another (NFR-2, NFR-9).
+* The model can be exchanged without code changes in the use case.
 
 ## Considered Options
 
@@ -46,9 +46,12 @@ Chosen options: "Local model by default, external OpenAI-compatible provider as 
 
 Rules:
 
-* **Orchestration in the API:** the answer use case retrieves passages through the search use case with the requesting Principal ([ADR-0005](0005-filter-search-by-repository-at-query-time.md)); there is no second retrieval path.
+* **Orchestration in the API:** the answer use case retrieves passages through the passage operation of the `SearchIndex` interface ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md)), with the `RepositoryScope` of the requesting Principal ([ADR-0005](0005-filter-search-by-repository-at-query-time.md)); there is no second retrieval path.
   The optional repository list can only narrow the scope.
-* **No answer without evidence:** if no passage is above a relevance threshold (tuned with the evaluation set), the API states that no answer is available and does not call the model.
+* **No answer without evidence:** Reciprocal Rank Fusion only orders passages and always ranks one first, so its score cannot decide relevance.
+  A retrieved passage counts as relevant only if it contains an exact-term match ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md)) or its cosine similarity reaches a configurable answer threshold, which is at least the minimum similarity of search and is tuned with the answerable and unanswerable questions of the evaluation set (NFR-3).
+  A match of the language full-text sub-query alone does not count, because common words match many passages.
+  Only relevant passages are sent to the model; if there is none, the API states that no answer is available and does not call the model (REQ-ANS-4, AC-13.5, AC-13.7).
 * **Prompt and sources:** at most k passages within a token budget, numbered `[1]…[k]`; the model is instructed to answer only from them and cite `[n]`.
   The response contains a source reference (document ID and name, repository ID and name, page) for every passage sent to the model, marks the cited ones and drops markers that refer to no passage.
 * **One interface, one protocol:** the `AnswerModel` interface has one implementation for the OpenAI-compatible chat completions API, used for both the local model and the external provider.
@@ -84,10 +87,10 @@ Rules:
 
 ### Confirmation
 
-* AC-13.1 to AC-13.5 run as automated tests; for AC-13.3 a recording model adapter asserts that no passage outside the Principal's scope was sent.
+* AC-13.1 to AC-13.5 and AC-13.7 run as automated tests; for AC-13.3 a recording model adapter asserts that no passage outside the Principal's scope was sent.
 * The default configuration runs with outbound internet blocked.
 * Automated tests for REQ-ANS-5: the setting is `local` after installation; a Principal who is not a Global Admin gets 403; enabling without a configured connection returns 409; after a Global Admin disables the external provider, the next answer request sends nothing to it (recording adapter); the API key never appears in responses or logs.
-* Spike (phase 2): the answer questions of the evaluation set run against two or three local models and once against Scaleway Generative APIs (test corpus only), measuring source correctness and answer time (NFR-9) while a worker is processing; the result decides the default model.
+* Evaluate candidate local models on the MVP question set for source correctness and answer time (NFR-9) with and without a worker processing. Use the results to select the default model.
 * The `AnswerModel` contract test suite runs against the local server and every supported provider.
 
 ## Pros and Cons of the Options
@@ -104,7 +107,7 @@ Rules:
 
 ### External provider by default
 
-* Good, because answers are fast and the reference host needs less memory.
+* Good, because answers are fast and the deployment needs less memory for inference.
 * Bad, because the default deployment would send passages to a third party and need outbound access, contradicting the README's promise of local operation.
 
 ### External provider for answers and embeddings

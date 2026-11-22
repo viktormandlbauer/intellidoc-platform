@@ -15,7 +15,7 @@ Which store holds the originals?
 
 * Shared access from API and worker containers, also on an orchestrator such as Kubernetes (A-7).
 * Self-hosted, free, permissive licence (`mvp.md` §6).
-* Low memory and operations effort on the reference host (Q-2).
+* Low resource and operational overhead.
 
 ## Considered Options
 

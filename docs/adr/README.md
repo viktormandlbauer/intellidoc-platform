@@ -41,3 +41,4 @@ Conventions that are easy to change (logging library, endpoint naming, linting) 
 | [0009](0009-use-postgresql-with-pgvector-as-search-index.md) | Use PostgreSQL with pgvector and full-text search as the search index | proposed | C-3 |
 | [0010](0010-generate-answers-locally-with-opt-in-external-provider.md) | Generate answers with a local language model and an opt-in external provider | proposed | C-5 |
 | [0011](0011-store-originals-in-rustfs.md) | Store originals in RustFS | proposed | – |
+| [0012](0012-validate-uploads-before-storing-original-and-metadata.md) | Validate uploads in a temporary file and store the original before the metadata | proposed | – |

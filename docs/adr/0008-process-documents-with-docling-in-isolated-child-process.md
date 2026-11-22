@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-17
+date: 2026-11-22
 ---
 
 # Process documents with Docling in an isolated child process
@@ -18,7 +18,7 @@ Which tool is used for extraction and chunking, and how is it run so that a hang
 * Page number per chunk (REQ-SRCH-3).
 * Local processing without external services.
 * Enforceable timeout and memory limit per document; failed step recorded (REQ-ING-3).
-* Processing time: 20 pages in 2 minutes (born-digital) and 5 minutes (scanned) on CPU (NFR-2).
+* Processing time for born-digital and scanned PDFs on CPU (NFR-2).
 * Further formats such as DOCX later.
 
 ## Considered Options
@@ -43,26 +43,31 @@ Chosen options: "Docling" in "a reusable child process that is killed on timeout
 Details:
 
 * The worker's pipeline runner starts a child process (spawn) that loads Docling and its models once and then converts documents one at a time.
-* For each document the parent waits at most the configured timeout; on expiry it kills the child, sets status `failed` with step `extract` and message "timeout", and starts a new child.
-* The child is also restarted after a configurable number of documents and runs with a memory limit, to contain memory leaks.
+* The processing timeout (REQ-ING-3) is one deadline per document for all steps ([ADR-0007](0007-deliver-processing-jobs-via-rabbitmq-with-transactional-outbox.md)).
+  The parent waits for the child at most until this deadline; on expiry it kills the child, sets status `failed` with step `extract` and message "timeout", and starts a new child.
+  The later steps get the remaining time as their own limit (request timeout for `embed`, statement timeout for `index`) and fail with their own step name.
+* The child is also restarted after a configurable number of documents, to contain memory leaks.
+* The parent polls the child's resident memory and kills it above a configurable limit, with status `failed`, step `extract` and message "memory limit".
+  An address-space limit (`RLIMIT_AS`) is not used, because the machine-learning runtimes reserve far more virtual memory than they use; the container's memory limit remains the backstop.
 * The child returns chunks with text, page numbers and headings; embedding and indexing run in the parent (steps `embed` and `index`).
 * The failed step (`extract`, `chunk`, `embed`, `index`) and the error message are stored with the document (REQ-ING-3).
-* The OCR engine used by Docling (e.g. EasyOCR, Tesseract or RapidOCR, languages German and English) is chosen in the spike based on NFR-2 and AC-5.5.
+* The OCR engine used by Docling (e.g. EasyOCR, Tesseract or RapidOCR, languages German and English) is selected during MVP implementation based on NFR-2 and AC-5.5.
 
 ### Consequences
 
 * Good, because one library covers extraction, OCR, layout and chunking, and later DOCX.
 * Good, because a hanging or crashing parse costs at most the timeout and never blocks the worker.
 * Good, because models are loaded once per child, not once per document.
-* Bad, because Docling with OCR models has a high memory use per worker, which limits the number of workers on the reference host; it is measured in the spike.
-* Bad, because OCR on CPU is slow; NFR-2's 5-minute limit for scanned documents must be verified.
+* Bad, because Each worker loads its own OCR models, so memory use grows with the number of worker replicas.
+* Bad, because OCR on CPU is slow; NFR-2's target for scanned documents must be verified.
 * Bad, because Docling evolves quickly; the version must be pinned and upgrades tested against the evaluation set.
 
 ### Confirmation
 
 * Test with a PDF that makes the parser hang (or a stub child that sleeps): the document becomes `failed` with step `extract` within timeout plus a small margin, and the worker processes the next document.
+* Test with a stub child that allocates memory beyond the limit: the document becomes `failed` with step `extract`, and the worker processes the next document.
 * AC-5.5 (word on the first page of a scanned PDF is found) runs in CI with a small scanned sample.
-* NFR-2 timed run on the reference environment, results documented.
+* NFR-2 timed run with the deployment configuration and results documented.
 * The deployment runs with outbound internet blocked.
 
 ## Pros and Cons of the Options

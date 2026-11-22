@@ -45,7 +45,7 @@ src/intellidoc_platform/
       answer/      AnswerModel (OpenAI-compatible chat completions)
       parsing/     DocumentParser (Docling in a child process)
       auth/        Authenticator, PasswordHasher, ApiKeyHasher
-  bootstrap/       composition root per process (api, worker), reads configuration
+  bootstrap/       composition root per process (api, worker, migration job), reads configuration
 ```
 
 **Dependency rule:** `domain` imports nothing from `application` or `adapters`; `application` imports only `domain`; adapters are wired to ports only in `bootstrap`.
@@ -58,7 +58,7 @@ Test corpus PDFs are not committed while their source is still open; `evaluation
 
 | Purpose | Tool |
 |---|---|
-| Python version | 3.12 |
+| Python version | a current Python 3 release supported by Docling and PyTorch; pinned in `pyproject.toml` with the skeleton |
 | Dependencies and virtual environment | uv (`pyproject.toml`, `uv.lock` committed) |
 | Linting and formatting | ruff |
 | Static type checking | mypy in strict mode for `src/` |

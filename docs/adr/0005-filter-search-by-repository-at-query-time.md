@@ -18,7 +18,7 @@ How is the permission filter applied to searches?
 * Revoking a role takes effect with the next request (REQ-ACL-6, AC-8.2).
 * Global Admins search all active repositories without holding a role (REQ-ACL-4, AC-8.3).
 * Restriction to selected repositories (REQ-SRCH-1, AC-7.4), and 404 for repositories without a role (REQ-ACL-3).
-* Search latency P95 ≤ 2 s (NFR-1).
+* Search latency (NFR-1).
 * The filter must be impossible to forget in code.
 
 ## Considered Options
@@ -47,7 +47,7 @@ Rules:
 * Good, because hit counts are computed by the index over permitted documents only.
 * Good, because the rule lives in one place and is enforced by the type of the interface.
 * Bad, because every search costs one additional indexed query on PostgreSQL.
-* Bad, because filtered vector search can lose recall if the index filters after the approximate nearest-neighbour step; pgvector's HNSW iterative index scans address this, and the spike checks recall with restrictive scopes.
+* Bad, because filtered vector search can lose recall if the index filters after the approximate nearest-neighbour step; pgvector's HNSW iterative index scans address this, and the MVP evaluation checks recall with restrictive scopes.
 * Neutral, because the number of repositories per user is expected to be small, so the filter list stays short.
 
 ### Confirmation

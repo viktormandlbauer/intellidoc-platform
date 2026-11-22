@@ -1,6 +1,6 @@
 # Requirements – IntelliDoc Platform
 
-Scope of this document: user stories, functional and non-functional requirements, prioritisation and acceptance criteria for the IntelliDoc Platform. The MVP boundary and exclusions are in [`mvp.md`](mvp.md), technical decisions in [`architecture.md`](architecture.md), problem statement and target group in [`README.md`](../README.md).
+See the [MVP](mvp.md) for scope and the [architecture](architecture.md) for design decisions.
 
 ## 1. Conventions
 
@@ -15,7 +15,7 @@ Scope of this document: user stories, functional and non-functional requirements
 
 **Wording:** "The API" = the HTTP interface. "The system" = API plus processing worker and search index. Requirement IDs are stable (removed IDs are not reused); each requirement references the user story it serves.
 
-**Core use case (demo scenario):** A Global Admin sets up a repository and members → a Contributor uploads PDFs (incl. a scanned one) → the documents are processed and become searchable → a Reader finds a document by a natural-language query and by an exact term, and downloads it → the Reader asks a question and gets a generated answer with page-level sources → a Reader without access to that repository does not see it → after revoking access, the document disappears from that user's results with the next request.
+The [demo scenario](mvp.md#2-demo-scenario-the-complete-use-case) exercises upload, search, sourced answers and access revocation.
 
 ## 2. Roles
 
@@ -158,6 +158,7 @@ All acceptance criteria start from the following base state, unless their **Give
 | AC-7.3 | **When** carol searches, **then** each hit contains document ID and name, repository ID and name, page number and a text excerpt, and hits are ordered by descending relevance. |
 | AC-7.4 | **When** carol restricts the search to R1, **then** only hits from R1 are returned. |
 | AC-7.5 | **Given** a document with status `pending`, `processing` or `failed` contains "2024-117", **when** carol searches "2024-117", **then** that document is not among the hits. |
+| AC-7.6 | **Given** D1 contains "2024-117" on several pages, **when** carol searches "2024-117", **then** D1 appears exactly once among the hits. |
 
 #### US-8 – Permission-safe search `M`
 
@@ -199,6 +200,7 @@ All acceptance criteria start from the following base state, unless their **Give
 | AC-13.4 | **Given** carol's role in R1 was revoked, **when** carol repeats the question immediately, **then** no source reference points to D1. |
 | AC-13.5 | **When** erin asks any question, **then** the API states that no answer is available and does not return a generated answer. |
 | AC-13.6 | AC-13.3 and AC-13.4 run as automated tests and are part of CI. |
+| AC-13.7 | **When** carol asks a question from the evaluation set that no document of the corpus answers (NFR-3), **then** the API states that no answer is available and does not return a generated answer. |
 
 ### 3.4 Should stories
 
@@ -229,7 +231,7 @@ All acceptance criteria start from the following base state, unless their **Give
 - **REQ-REP-3** [M] (US-4, US-7) The API shall list for a Principal all active repositories in which they hold a role (for a Global Admin: all active repositories).
 - **REQ-REP-4** [S] (US-11) The API shall allow a Global Admin to deactivate a repository. This marks the repository and all its documents inactive without physically removing them; the name may then be reused.
 - **REQ-ACL-1** [M] (US-3) The API shall allow a Global Admin to assign and revoke the Repo Admin role in any repository.
-- **REQ-ACL-2** [M] (US-4) The API shall allow a Repo Admin to grant, change and revoke the Contributor and Reader roles in their repository, and to list its members with their roles.
+- **REQ-ACL-2** [M] (US-4) The API shall allow a Repo Admin to grant, change and revoke the Contributor and Reader roles in their repository, identifying the user by username, and to list its members with their roles. An unknown or inactive username shall return 404. A Repo Admin shall not be able to list all users, nor to change or revoke the role of a Repo Admin (only a Global Admin can, REQ-ACL-1).
 - **REQ-ACL-3** [M] (US-4) The API shall reject operations not permitted by the Principal's role with 403. For repositories or documents the Principal has no role for, the API shall respond 404.
 - **REQ-ACL-4** [M] (US-3) A Global Admin shall have all Repo Admin permissions in every active repository without holding a role there.
 - **REQ-ACL-5** [M] (US-8) Every search shall be restricted to active, indexed documents in repositories in which the Principal currently holds a role (Global Admin: all active repositories). Other documents shall not appear in hits, hit counts or excerpts.
@@ -238,18 +240,18 @@ All acceptance criteria start from the following base state, unless their **Give
 ### 4.3 Documents
 
 - **REQ-DOC-1** [M] (US-5) The API shall allow a Contributor or Repo Admin to upload a PDF document to a repository, up to a configurable maximum size (default 50 MB).
-- **REQ-DOC-2** [M] (US-5) The API shall reject files that are not valid PDFs (415), validated by file content, not by extension or declared MIME type.
+- **REQ-DOC-2** [M] (US-5) The API shall reject files that are not valid PDFs (415), validated by file content, not by extension or declared MIME type. PDFs that cannot be opened without a password shall be rejected in the same way.
 - **REQ-DOC-3** [M] (US-5) The system shall store for each document: ID, repository, name, size, SHA-256 checksum, uploader, upload timestamp and processing status. The original shall be stored unchanged.
 - **REQ-DOC-4** [M] (US-6) The API shall allow every member of a repository to list its active documents (paginated) and to read a document's metadata.
 - **REQ-DOC-5** [M] (US-6) The API shall allow every member of a repository to download the original of an active document.
 - **REQ-DOC-6** [M] (US-9) The API shall allow a Contributor to deactivate documents they uploaded, and a Repo Admin to deactivate any document in their repository. Deactivation shall not physically remove the original or metadata.
-- **REQ-DOC-7** [M] (US-9) Inactive documents and documents of inactive repositories shall be excluded from listing, download and search.
+- **REQ-DOC-7** [M] (US-9) Inactive documents and documents of inactive repositories shall be excluded from listing, download and search, and shall not be processed. A document deactivated while it is processed shall not become searchable.
 - **REQ-DOC-8** [M] (US-5) Every upload shall create a new, independent document. The system shall not keep versions and shall not detect duplicates.
 
 ### 4.4 Processing
 
 - **REQ-ING-1** [M] (US-5) The system shall process every uploaded document asynchronously: text extraction (with OCR for pages without a text layer), chunking with page reference, embedding and indexing. The upload request shall not wait for processing.
-- **REQ-ING-2** [M] (US-5) The system shall store and the API shall expose a processing status per document: `pending`, `processing`, `indexed`, `failed`. Allowed transitions: `pending → processing → indexed | failed`; `failed → pending` on retry (REQ-ING-6); `processing → pending` on recovery after a worker interruption (NFR-7).
+- **REQ-ING-2** [M] (US-5) The system shall store and the API shall expose a processing status per document: `pending`, `processing`, `indexed`, `failed`. Allowed transitions: `pending → processing → indexed | failed`; `failed → pending` on retry (REQ-ING-6); `processing → pending` on recovery after a worker interruption (NFR-7); `pending → failed` if the job cannot be delivered to a worker.
 - **REQ-ING-3** [M] (US-5, US-10) When processing fails or exceeds a configurable timeout (default 10 minutes per document), the system shall set the status `failed` and store the error message and the failed step.
 - **REQ-ING-4** [M] (US-5) Processing shall be idempotent: repeating it for a document shall replace that document's chunks and index entries and never create duplicates.
 - **REQ-ING-5** [S] (US-10) The API shall allow a Repo Admin to list the failed documents of their repositories, and a Global Admin those of all repositories, with document name, repository, failed step and error message.
@@ -259,8 +261,8 @@ All acceptance criteria start from the following base state, unless their **Give
 
 - **REQ-SRCH-1** [M] (US-7) The API shall accept a free-text query (1–500 characters) and search all repositories accessible to the Principal (REQ-ACL-5), optionally restricted to a list of repository IDs.
 - **REQ-SRCH-2** [M] (US-7) The system shall combine lexical (keyword) and semantic (embedding) matching in one ranked result list.
-- **REQ-SRCH-3** [M] (US-7) Each hit shall contain document ID and name, repository ID and name, page number and a text excerpt of the matching passage. Hits shall be ordered by relevance and paginated (default 10 per page).
-- **REQ-SRCH-4** [M] (US-7) For queries consisting of an identifier-like term (e.g. a contract number or name), the document containing that term shall rank within the first 10 hits in at least 95 % of the exact-term queries of the evaluation set (NFR-3).
+- **REQ-SRCH-3** [M] (US-7) Each hit shall represent one document and contain document ID and name, repository ID and name, and the page number and a text excerpt of its best-matching passage. A document shall appear at most once in a result list. Hits shall be ordered by relevance and paginated (default 10 per page), and the response shall state the total number of hits.
+- **REQ-SRCH-4** [M] (US-7) For queries consisting of an identifier-like term (e.g. a contract number or name), the document containing that term shall rank within the first 10 hits. The share of exact-term queries of the evaluation set for which this must hold is the exact-term target of NFR-3.
 - **REQ-SRCH-5** [S] (US-7) The system shall support documents and queries in German and English, including queries in one language matching documents in the other (semantic part).
 
 ### 4.6 Answers
@@ -273,15 +275,17 @@ All acceptance criteria start from the following base state, unless their **Give
 
 ## 5. Non-functional requirements
 
-All measurements on the **reference environment**: one host, 8 CPU cores, 16 GB RAM, no GPU, test corpus of 1,000 PDFs (≈ 20,000 pages, of which ≥ 10 % scanned). Measured results are documented per release.
+Run measurements on a test corpus of ≥ 200 PDFs (≈ 4,000 pages, of which ≥ 10 % scanned). Size the deployment for the workload and document the hardware, service replica counts, and measured results per release.
 
-- **NFR-1 Search performance** [M] – P95 ≤ 2 s with 5 concurrent users sending evaluation-set queries (NFR-3) for 5 minutes, while one worker processes documents. *Test:* load test script.
-- **NFR-2 Processing time** [M] – Each PDF of a reference set (5 born-digital and 5 scanned, 20 pages each) reaches `indexed` within 2 minutes (born-digital) or 5 minutes (scanned) after upload, on one idle worker. *Test:* timed script.
-- **NFR-3 Search quality** [M] – The repository contains an evaluation set of ≥ 30 queries (German and English; ≥ 10 exact-term, ≥ 10 paraphrase) with expected documents, and ≥ 10 questions with expected source documents (US-13). Targets: expected document in the top 10 for ≥ 95 % of exact-term queries; Recall@10 ≥ 0.8 over all queries. *Test:* evaluation script.
+The target values below are first estimates. Confirm them during MVP validation. Document any adjustment and its rationale alongside the baseline measurements in the same pull request.
+
+- **NFR-1 Search performance** [M] – P95 ≤ 3 s with 5 concurrent users sending evaluation-set queries (NFR-3) for 5 minutes, while no document is being processed. The same load test is repeated while one worker processes documents; that result is documented but has no target. *Test:* load test script.
+- **NFR-2 Processing time** [M] – On one otherwise idle worker, the PDFs of a reference set (5 born-digital and 5 scanned, about 20 pages each) reach `indexed` after upload in on average ≤ 3 minutes (born-digital) and ≤ 6 minutes (scanned), and none of them reaches the processing timeout (REQ-ING-3). *Test:* timed script.
+- **NFR-3 Search quality** [M] – The repository contains an evaluation set of ≥ 30 queries (German and English; ≥ 10 exact-term, ≥ 10 paraphrase) with expected documents, ≥ 10 questions with expected source documents (US-13), and ≥ 5 questions that no document of the corpus answers (REQ-ANS-4). Targets: expected document in the top 10 for ≥ 90 % of exact-term queries; Recall@10 ≥ 0.7 over all queries. *Test:* evaluation script.
 - **NFR-4 Security** [M] – Passwords stored as salted hashes with a deliberately slow algorithm, API keys only as hashes; tokens signed and expiring; no passwords, tokens, API keys or document text in logs; external traffic only over TLS. *Test:* automated tests for stored hashes, rejected expired or tampered tokens (401), log contents and refused plain HTTP; the hashing algorithm is checked in code review.
-- **NFR-7 Robustness** [S] – A document whose worker is stopped during processing reaches `indexed` or `failed` within twice the processing timeout (REQ-ING-3) after the worker restarts. *Test:* automated kill-and-restart test.
-- **NFR-8 API documentation** [M] – The running service publishes an OpenAPI 3 specification of all endpoints, generated from the code; every error response uses one JSON format with code and message. *Test:* CI validates the published specification and the body of every documented error status.
-- **NFR-9 Answer time** [M] – P95 ≤ 30 s with the local answer model for one user asking each evaluation-set question (NFR-3) three times, while one worker processes documents. *Test:* timed script.
+- **NFR-7 Robustness** [S] – A document whose worker is stopped during processing reaches `indexed` or `failed` within three times the processing timeout (REQ-ING-3) after the worker restarts. *Test:* automated kill-and-restart test.
+- **NFR-8 API documentation** [M] – The running service publishes an OpenAPI 3 specification of all endpoints, generated from the code; every error response generated by the API uses one JSON format with code and message. *Test:* CI validates the published specification and the body of every documented error status.
+- **NFR-9 Answer time** [M] – P95 ≤ 60 s with the local answer model for one user asking each evaluation-set question (NFR-3) three times, while no document is being processed. The same run is repeated while one worker processes documents; that result is documented but has no target. *Test:* timed script.
 
 ## 6. Glossary
 
@@ -293,7 +297,7 @@ All measurements on the **reference environment**: one host, 8 CPU cores, 16 GB 
 | Original | The file exactly as uploaded; never modified. |
 | Uploader | The user who uploaded a document; used for Contributor deactivation rights. |
 | Chunk | A text passage of a document with page reference; the unit of search. |
-| Hit | A search result: a chunk with document, repository, page and excerpt. |
+| Hit | A search result for one document: its best-matching chunk with document, repository, page and excerpt. |
 | Processing status | `pending`, `processing`, `indexed` or `failed`. |
 | Answer provider | The language model that generates answers: the local answer model (default) or an external provider, if a Global Admin has enabled it (REQ-ANS-5). |
 | Recall@10 | Share of a query's expected documents that appear in its top 10 hits, averaged over all queries. |

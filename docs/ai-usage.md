@@ -16,6 +16,8 @@ This document records where AI was used in phase 1 (requirements) and phase 2 (a
 | 4 | Candidate architectures and ADRs (phase 2) | `requirements.md`, `mvp.md` | `architecture.md`, ADR-0001…0008 | *To be completed*; see 4.4 |
 | 5 | Consistency review of requirements, MVP, architecture and ADRs | All documents in `docs/` | List of contradictions and gaps; fixes to test data, 403/404 criteria, demo steps and cross-references | *To be completed*; see 5.3 |
 | 6 | Coherence review after the switch to PostgreSQL search, and resulting changes | All documents in `docs/`, README | List of contradictions and stale rationale; external answer provider enabled by a Global Admin; ADR-0003 and ADR-0006 merged | *To be completed*; see 6.3 |
+| 7 | Pre-implementation review and relaxed NFR targets | Whole repository | List of open points before implementation; relaxed NFR targets; small cleanups | *To be completed*; see 7.3 |
+| 8 | Resolving the design gaps found in 7 | Whole repository | Rules for job lifecycle, timeout, search result contract, answer relevance and upload; ADR-0012; requirement changes | *To be completed*; see 8.3 |
 
 ## 1. Review of the first draft
 
@@ -122,7 +124,7 @@ These are plausible but **not verified** and must be confirmed or changed by the
 | NFR-1 | P95 ≤ 2 s, 5 concurrent users | Assumed; depends on hardware and the chosen engine |
 | NFR-2 | 2 min / 5 min per 20 pages | Based on one public benchmark of Docling on CPU (about 3 s/page for a scanned document); our hardware may differ |
 | NFR-3 | Recall@10 ≥ 0.8, exact term ≥ 95 % | Target values are a guess; calibrate after a first baseline |
-| Reference environment | 8 cores, 16 GB, no GPU, 1,000 PDFs | Must match the hardware we can actually use (Q-2) |
+| Reference environment | 8 cores, 16 GB, no GPU, 1,000 PDFs | Hardware assumptions were still open at this stage |
 | REQ-ACL-3 | 404 instead of 403 without a role | Design choice (hides existence vs. clearer errors) |
 | REQ-AUT-1 | Token lifetime 60 min | Assumption |
 | REQ-DOC-1 | Max. 50 MB | Assumption |
@@ -145,15 +147,15 @@ These are plausible but **not verified** and must be confirmed or changed by the
 
 ### 4.2 Result (summary)
 
-- `architecture.md`: three candidate designs (A – modular monolith on PostgreSQL, B – API with worker pool and dedicated search engine, C – event-driven microservices) as C4 diagrams on levels 1–3, a comparison against the requirements and a recommendation for B with a spike.
+- `architecture.md`: three candidate designs (A – modular monolith on PostgreSQL, B – API with worker pool and dedicated search engine, C – event-driven microservices) as C4 diagrams on levels 1–3, a comparison against the requirements and a recommendation for B with an early evaluation proposal.
 - ADR-0001…0008 (overall structure, Python/FastAPI, ports and adapters, authentication, query-time permission filter, index visibility, job delivery, Docling execution), all `proposed`.
 
 ### 4.3 Decisions made by the AI that need human validation
 
 | Item | AI choice | Why it needs checking |
 |---|---|---|
-| Memory estimates | A ≈ 7–9 GB, B ≈ 11–13 GB, C ≈ 13–15 GB | Estimates; measured in the spike (Q-2) |
-| ADR-0001 | Design B | Depends on the spike and on the team's experience with OpenSearch and RabbitMQ |
+| Memory estimates | A ≈ 7–9 GB, B ≈ 11–13 GB, C ≈ 13–15 GB | Early estimates under the original fixed-host assumption |
+| ADR-0001 | Design B | Initially depended on the proposed evaluation and the team's experience with OpenSearch and RabbitMQ |
 | ADR-0007 | RabbitMQ with outbox instead of a PostgreSQL job table | Adds a container and the outbox relay; the simpler job table is the fallback |
 | ADR-0003 (later merged into ADR-0002) | Ports and adapters | More boilerplate; check that the team will keep the dependency rule |
 
@@ -207,7 +209,79 @@ Follow-up: `Update the architecture since opt-in external LLM provider is now a 
 - Is US-16 correctly a Should?
 - Which of the remaining review findings do we fix, and how?
 
-## 7. Lessons learned [Team]
+## 7. Pre-implementation review (phase 2)
+
+### 7.1 Prompt
+
+```text
+Review the project. What should be addressed before i start implementing?
+```
+
+Follow-up: `NFRs can be reformulated so they arent that critical formulated. Also do the quick cleanups. No concrete versions yet`
+
+### 7.2 Result (summary)
+
+- Review: the proposed evaluation depends on the test corpus and evaluation set (Q-3); open design points in the search result contract (hits per chunk or document, total hit count, query language, relevance threshold for answers), the job lifecycle (claim rule vs. REQ-ING-2, deactivation during processing, dead-letter handling, timeout scope) and the upload path; small inconsistencies.
+- NFRs relaxed:
+  - corpus reduced from 1,000 to ≥ 200 PDFs
+  - NFR-1 P95 from 2 s to 3 s, measured without concurrent processing
+  - NFR-2 from a limit per PDF to an average (3 / 6 minutes) without timeouts
+  - NFR-3 targets from 95 % / 0.8 to 90 % / 0.7
+  - NFR-8 limited to errors generated by the API
+  - NFR-9 P95 from 30 s to 60 s, measured without concurrent processing
+  - the runs under concurrent processing are documented without a target
+  - all targets are confirmed or adjusted once after the first baseline measurement
+- Target values now appear only in `requirements.md`; ADRs and REQ-SRCH-4 refer to the NFR instead of repeating the number.
+- Cleanups: stale reference to a removed NFR in `.gitignore`, duplicate PostgreSQL row in `mvp.md` §6, no concrete Python version in `CONTRIBUTING.md`.
+
+### 7.3 [Team assessment]
+
+- Are the relaxed targets still meaningful for the target group, or did we only make them easy to pass?
+- Which of the open design points do we resolve before implementing, and in which ADR?
+
+## 8. Resolving the design gaps (phase 2)
+
+### 8.1 Prompt
+
+```text
+Now focus on the design gaps
+```
+
+### 8.2 Result (summary)
+
+- **Job lifecycle (ADR-0007):**
+  - the claim only moves `pending → processing`; a redelivered message for a document in `processing` is dropped and the sweep recovers the document
+  - fenced writes; a `recovery_count` limit fails documents that crash the worker repeatedly
+  - inactive documents are never processed and their status is frozen
+  - quorum queue with delivery limit; a dead-letter consumer sets `pending → failed` (step `deliver`)
+  - the outbox relay claims rows with `SKIP LOCKED` in every API instance
+- **Timeout and memory (ADR-0008):** one deadline per document for all steps; the parent kills the child above a resident-memory limit instead of using `RLIMIT_AS`.
+- **Search contract (ADR-0009):**
+  - one hit per document, ranked by its best chunk
+  - capped candidates per sub-query, so the total hit count is the size of the returned list
+  - minimum cosine similarity for vector candidates
+  - per-chunk text-search configuration with no query language detection
+  - separate query and passage embedding; the embedding model is stored per chunk
+  - a separate passage operation for answers
+- **Answer relevance (ADR-0010):** a passage is relevant only with an exact-term match or a cosine similarity above the answer threshold.
+- **Upload (new ADR-0012):** streaming into a temporary file with size limit and checksum, content validation, then object store, then document and outbox row in one transaction.
+- **Migration job:** a one-shot job runs migrations and the bootstrap before the API and the workers (`architecture.md` §3, ADR-0004).
+- **Requirements:**
+  - REQ-SRCH-3 and the glossary: one hit per document; new AC-7.6
+  - REQ-ACL-2: roles granted by username; a Repo Admin cannot change a Repo Admin's role
+  - REQ-DOC-2: password-protected PDFs rejected
+  - REQ-DOC-7: inactive documents not processed
+  - REQ-ING-2: `pending → failed`
+  - NFR-3: ≥ 5 unanswerable questions; new AC-13.7
+  - NFR-7: three times the processing timeout
+
+### 8.3 [Team assessment]
+
+- Is one hit per document what our readers want, or do they need several passages per document in the result list?
+- Is granting roles by username acceptable, given that it lets a Repo Admin find out whether a username exists?
+- Are the default values (100 candidates per sub-query, 3 recoveries) plausible, and which of them need tuning?
+
+## 9. Lessons learned [Team]
 
 - Where did AI help most (e.g. finding inconsistencies quickly, structuring)?
 - Where was it weak (e.g. no domain knowledge, invented numbers, judging the scope without knowing the team)?

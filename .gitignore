@@ -1,7 +1,7 @@
 # Obsidian vault settings and workspace layout (personal, change constantly)
 .obsidian/
 
-# Local configuration with secrets; .env.example is committed (NFR-6)
+# Local configuration with secrets; .env.example is committed (see CONTRIBUTING.md, Code conventions)
 .env
 !.env.example
 

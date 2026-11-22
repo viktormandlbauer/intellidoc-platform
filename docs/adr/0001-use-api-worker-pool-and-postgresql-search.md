@@ -10,7 +10,7 @@ date: 2026-11-21
 The IntelliDoc Platform must accept uploads, process them with compute-heavy OCR and embedding, answer permission-filtered hybrid searches and generate answers from the documents (US-13).
 The README states the goal of separate services for upload, processing, embedding and answer generation, so that processing capacity grows by adding workers and a failing or overloaded worker or answer model does not take down search, upload or download.
 Documents and all data derived from them must stay on the company server.
-At the same time the system must start with one `docker compose up` on a single 16 GB host and be built within one semester.
+At the same time the system must start with one `docker compose up` on a single host and be built within one semester.
 Which overall system structure should the IntelliDoc Platform have?
 
 ## Decision Drivers
@@ -19,8 +19,8 @@ Which overall system structure should the IntelliDoc Platform have?
 * Documents, chunks, vectors and metadata stay on the company server.
 * Correct permission filtering with immediate effect (REQ-ACL-5, REQ-ACL-6), also for generated answers (REQ-ANS-3).
 * Exact-term ranking (REQ-SRCH-4) and search quality (NFR-3), the biggest project risks (`mvp.md` §7).
-* Search latency P95 ≤ 2 s (NFR-1), processing time (NFR-2) and answer time (NFR-9).
-* Single-command deployment on the reference host with 16 GB RAM.
+* Search latency (NFR-1), processing time (NFR-2) and answer time (NFR-9).
+* Single-command deployment with Docker Compose.
 
 ## Considered Options
 
@@ -33,7 +33,7 @@ The search index inside B is decided in [ADR-0009](0009-use-postgresql-with-pgve
 
 ## Decision Outcome
 
-Chosen option: "B – API with worker pool", because it is the only option that meets the distributed-system goal while keeping all document data in one local store and staying within the semester effort; whether it fits the memory of the reference host is confirmed by the spike.
+Chosen option: "B – API with worker pool", because it is the only option that meets the distributed-system goal while keeping all document data in one local store and staying within the semester effort.
 
 ### Consequences
 
@@ -44,11 +44,11 @@ Chosen option: "B – API with worker pool", because it is the only option that 
 * Bad, because lexical ranking in PostgreSQL is weaker than BM25 and exact-term matching needs custom tokenisation, which must be proven by the evaluation set (REQ-SRCH-4, NFR-3).
 * Bad, because PostgreSQL is a single point of failure for metadata and search, and search competes with ingestion writes on the same database.
 * Bad, because job delivery needs a broker and an outbox (see [ADR-0007](0007-deliver-processing-jobs-via-rabbitmq-with-transactional-outbox.md)).
-* Neutral, because the deployment has 8 containers (7 if the operator leaves out the local answer model, see [ADR-0010](0010-generate-answers-locally-with-opt-in-external-provider.md)); whether they fit the reference host is measured in the spike (open question Q-2).
+* Neutral, because the deployment has 8 containers (7 if the operator leaves out the local answer model, see [ADR-0010](0010-generate-answers-locally-with-opt-in-external-provider.md)).
 
 ### Confirmation
 
-* Spike in phase 2: the full stack runs on the reference environment with two workers under load, and its memory use is measured and documented.
+* A clean deployment starts the full stack with `docker compose up` and supports the MVP demo scenario.
 * The NFR-3 evaluation set, including the exact-term queries, meets its targets on PostgreSQL search ([ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md)).
 * The demo scenario (`mvp.md` §2) passes on a fresh checkout with `docker compose up`.
 * Stopping all workers does not affect login, listing, download, search or answers (manual test, later automated).
@@ -76,4 +76,4 @@ Chosen option: "B – API with worker pool", because it is the only option that 
 * The search index is decided in [ADR-0009](0009-use-postgresql-with-pgvector-as-search-index.md) (replaces C-3), including the fallback to OpenSearch if PostgreSQL misses the search targets even with a BM25 extension.
 * Answer generation is decided in [ADR-0010](0010-generate-answers-locally-with-opt-in-external-provider.md) (replaces C-5), object storage in [ADR-0011](0011-store-originals-in-rustfs.md), language and code structure in [ADR-0002](0002-use-python-and-fastapi-with-ports-and-adapters.md).
 * The pipeline is written as separate steps (extract → chunk → embed → index) so stages can later be split into services as in C if OCR becomes the bottleneck.
-* Revisit if the reference host cannot run the stack (Q-2) or the semester scope changes.
+* Revisit if the semester scope changes.

@@ -89,3 +89,4 @@ Details:
 
 * Replaces assumption A-2 in [`architecture.md`](../architecture.md).
 * Bootstrap of the first Global Admin (REQ-USR-1) uses the same password hasher.
+  It runs in the one-shot migration job before the API starts ([`architecture.md`](../architecture.md) §3), in one transaction that creates the Global Admin only if no Global Admin exists, so several API instances never bootstrap concurrently.
